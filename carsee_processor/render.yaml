@@ -1,0 +1,8 @@
+# Render Blueprint: deploy CarSee Processor as a Web Service
+# Use Root Directory = carsee_processor when connecting the repo, or run from this folder.
+services:
+  - type: web
+    name: carsee-processor
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
