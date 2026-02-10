@@ -37,6 +37,19 @@ def download_models():
     return base
 
 
+def download_single_model(model_key: str) -> str:
+    """Download one model if not present. Returns path. Use at request time to avoid startup OOM."""
+    base = get_models_dir()
+    path = os.path.join(base, model_key)
+    if os.path.isfile(path):
+        return path
+    url = f"{GITHUB_RELEASE}/{model_key}"
+    print(f"Downloading {model_key} from GitHub...")
+    urllib.request.urlretrieve(url, path)
+    print(f"  -> {path}")
+    return path
+
+
 def letterbox(image: Image.Image, target_w: int, target_h: int):
     """Letterbox resize; returns (numpy CHW tensor, scale, pad_x, pad_y, orig_w, orig_h)."""
     w, h = image.size

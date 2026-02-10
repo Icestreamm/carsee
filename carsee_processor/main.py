@@ -11,7 +11,8 @@ from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from inference import (
-    download_models,
+    get_models_dir,
+    download_single_model,
     load_single_session,
     run_single_model_for_image,
     compute_reference,
@@ -24,13 +25,13 @@ models_dir = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Download model files only; do not load ONNX sessions (saves RAM)."""
+    """No download at startup to avoid 502/OOM. Models are downloaded on first use per model."""
     global models_dir
     try:
-        models_dir = download_models()
-        logger.info("Models downloaded to %s", models_dir)
+        models_dir = get_models_dir()
+        logger.info("Models dir ready: %s (models download on first request)", models_dir)
     except Exception as e:
-        logger.exception("Failed to download models: %s", e)
+        logger.exception("Failed to init: %s", e)
         raise
     yield
     models_dir = None
@@ -84,6 +85,19 @@ async def run_single_model(
     for img_file in images:
         content = await img_file.read()
         image_bytes_list.append(content if len(content) > 0 else None)
+
+    # Download this model only if missing (lazy; avoids startup OOM)
+    try:
+        download_single_model(model_key)
+    except Exception as e:
+        logger.warning("Download %s failed: %s", model_key, e)
+        return {
+            "model_key": model_key,
+            "photos": [
+                {"detections": [], "orig_w": 640.0, "orig_h": 480.0}
+                for _ in image_bytes_list
+            ],
+        }
 
     loaded = load_single_session(models_dir, model_key)
     if loaded is None:
@@ -152,6 +166,10 @@ async def process(
     # Run one model at a time, then drop it to free memory
     for m in MODELS:
         model_key = m["key"]
+        try:
+            download_single_model(model_key)
+        except Exception as e:
+            logger.warning("Download %s failed: %s", model_key, e)
         loaded = load_single_session(models_dir, model_key)
         if loaded is None:
             for r in results:
