@@ -56,6 +56,71 @@ def health():
     return {"status": "ok", "models_ready": models_dir is not None}
 
 
+# Allowed model keys for single-model endpoint (one at a time to avoid 502/OOM)
+VALID_MODEL_KEYS = [m["key"] for m in MODELS]
+
+
+@app.post("/run_single_model")
+async def run_single_model(
+    model_key: str = Form(...),
+    images: list[UploadFile] = File(...),
+    tire_diameter: float = Form(57.47),
+    handle_width: float = Form(20.6),
+    license_plate_width: float = Form(32.0),
+):
+    """
+    Run exactly one model on all images. Call this endpoint once per model (7 times total)
+    to avoid loading multiple models and reduce memory (fixes 502).
+    Returns detections per image for this model only.
+    """
+    if models_dir is None:
+        raise HTTPException(status_code=503, detail="Models not ready")
+    if model_key not in VALID_MODEL_KEYS:
+        raise HTTPException(status_code=400, detail=f"Invalid model_key. Use one of: {VALID_MODEL_KEYS}")
+    if not images:
+        raise HTTPException(status_code=400, detail="At least one image required")
+
+    image_bytes_list = []
+    for img_file in images:
+        content = await img_file.read()
+        image_bytes_list.append(content if len(content) > 0 else None)
+
+    loaded = load_single_session(models_dir, model_key)
+    if loaded is None:
+        return {
+            "model_key": model_key,
+            "photos": [
+                {"detections": [], "orig_w": 640.0, "orig_h": 480.0}
+                for _ in image_bytes_list
+            ],
+        }
+
+    session, config, inp_name, out_name = loaded
+    photos_result = []
+    try:
+        for img_bytes in image_bytes_list:
+            if img_bytes is None:
+                photos_result.append({"detections": [], "orig_w": 640.0, "orig_h": 480.0})
+                continue
+            try:
+                dets, orig_w, orig_h = run_single_model_for_image(
+                    session, config, inp_name, out_name, img_bytes, model_key
+                )
+                photos_result.append({
+                    "detections": dets,
+                    "orig_w": orig_w,
+                    "orig_h": orig_h,
+                })
+            except Exception as e:
+                logger.warning("run_single_model %s: %s", model_key, e)
+                photos_result.append({"detections": [], "orig_w": 640.0, "orig_h": 480.0})
+    finally:
+        del session
+    gc.collect()
+
+    return {"model_key": model_key, "photos": photos_result}
+
+
 @app.post("/process")
 async def process(
     images: list[UploadFile] = File(...),
