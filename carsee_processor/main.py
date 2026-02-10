@@ -1,7 +1,9 @@
 """
 CarSee processing API: run ONNX damage/reference models in the cloud.
 Deploy to Render.com; Flutter app sends photos and receives detections.
+Uses one-model-at-a-time loading to stay under 512 MB RAM (Render free tier).
 """
+import gc
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -10,31 +12,28 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from inference import (
     download_models,
-    load_sessions,
-    run_inference_for_image,
+    load_single_session,
+    run_single_model_for_image,
+    compute_reference,
+    MODELS,
 )
 
 logger = logging.getLogger(__name__)
-sessions_cache = {}
-input_names_cache = {}
-output_names_cache = {}
+models_dir = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load ONNX models once at startup."""
-    global sessions_cache, input_names_cache, output_names_cache
+    """Download model files only; do not load ONNX sessions (saves RAM)."""
+    global models_dir
     try:
         models_dir = download_models()
-        sessions_cache, input_names_cache, output_names_cache = load_sessions(models_dir)
-        logger.info("Loaded %d ONNX models", len(sessions_cache))
+        logger.info("Models downloaded to %s", models_dir)
     except Exception as e:
-        logger.exception("Failed to load models: %s", e)
+        logger.exception("Failed to download models: %s", e)
         raise
     yield
-    sessions_cache.clear()
-    input_names_cache.clear()
-    output_names_cache.clear()
+    models_dir = None
 
 
 app = FastAPI(title="CarSee Processor", lifespan=lifespan)
@@ -49,7 +48,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "models_loaded": len(sessions_cache)}
+    return {"status": "ok", "models_ready": models_dir is not None}
 
 
 @app.post("/process")
@@ -60,40 +59,64 @@ async def process(
     license_plate_width: float = Form(32.0),
 ):
     """
-    Process one or more car photos: run all ONNX models and return
-    detections per model + reference scale per photo.
+    Process one or more car photos: run all ONNX models (one at a time to save RAM)
+    and return detections per model + reference scale per photo.
     """
-    if not sessions_cache:
-        raise HTTPException(status_code=503, detail="Models not loaded")
+    if models_dir is None:
+        raise HTTPException(status_code=503, detail="Models not ready")
     if not images:
         raise HTTPException(status_code=400, detail="At least one image required")
 
-    results = []
+    # Read all image bytes
+    image_bytes_list = []
     for img_file in images:
         content = await img_file.read()
         if len(content) == 0:
-            results.append({
-                "detectionsByModel": {},
-                "referenceResult": {"type": "fallback", "scale": 0.01, "realSizeCm": 100.0},
-            })
+            image_bytes_list.append(None)
+        else:
+            image_bytes_list.append(content)
+
+    # One result per image; we'll fill detectionsByModel and referenceResult
+    results = [{"detectionsByModel": {}, "_orig_w": 640.0} for _ in image_bytes_list]
+
+    # Run one model at a time, then drop it to free memory
+    for m in MODELS:
+        model_key = m["key"]
+        loaded = load_single_session(models_dir, model_key)
+        if loaded is None:
+            for r in results:
+                r["detectionsByModel"][model_key] = []
             continue
+        session, config, inp_name, out_name = loaded
         try:
-            detections_by_model, reference_result = run_inference_for_image(
-                content,
-                sessions_cache,
-                input_names_cache,
-                output_names_cache,
-                tire_diameter=tire_diameter,
-                handle_width=handle_width,
-                license_plate_width=license_plate_width,
-            )
-            results.append({
-                "detectionsByModel": detections_by_model,
-                "referenceResult": reference_result,
-            })
-        except Exception as e:
-            logger.exception("Inference failed for %s: %s", img_file.filename, e)
-            raise HTTPException(status_code=500, detail=str(e))
+            for i, img_bytes in enumerate(image_bytes_list):
+                if img_bytes is None:
+                    results[i]["detectionsByModel"][model_key] = []
+                    continue
+                try:
+                    dets, orig_w, _ = run_single_model_for_image(
+                        session, config, inp_name, out_name, img_bytes, model_key
+                    )
+                    results[i]["detectionsByModel"][model_key] = dets
+                    results[i]["_orig_w"] = orig_w
+                except Exception as e:
+                    logger.warning("Model %s image %s: %s", model_key, i, e)
+                    results[i]["detectionsByModel"][model_key] = []
+        finally:
+            del session
+        gc.collect()
+
+    # Compute reference for each image and remove temp key
+    for i in range(len(results)):
+        ref = compute_reference(
+            results[i]["detectionsByModel"],
+            tire_diameter,
+            handle_width,
+            license_plate_width,
+            results[i]["_orig_w"],
+        )
+        del results[i]["_orig_w"]
+        results[i]["referenceResult"] = ref
 
     return {"photos": results}
 

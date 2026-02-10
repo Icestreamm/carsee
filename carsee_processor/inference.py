@@ -62,7 +62,7 @@ def letterbox(image: Image.Image, target_w: int, target_h: int):
 
 
 def load_sessions(models_dir: str):
-    """Load ONNX sessions for all models."""
+    """Load ONNX sessions for all models (high memory). Prefer load_single_session + run_single_model for low memory."""
     sessions = {}
     input_names = {}
     output_names = {}
@@ -81,6 +81,61 @@ def load_sessions(models_dir: str):
         input_names[m["key"]] = iname
         output_names[m["key"]] = oname
     return sessions, input_names, output_names
+
+
+def get_model_config(model_key: str):
+    """Get config dict for a model by key."""
+    for m in MODELS:
+        if m["key"] == model_key:
+            return m
+    return None
+
+
+def load_single_session(models_dir: str, model_key: str):
+    """Load one ONNX session. Caller should discard it after use to free memory."""
+    config = get_model_config(model_key)
+    if not config:
+        return None
+    path = os.path.join(models_dir, model_key)
+    if not os.path.isfile(path):
+        return None
+    sess = ort.InferenceSession(
+        path,
+        providers=["CPUExecutionProvider"],
+        sess_options=ort.SessionOptions(),
+    )
+    iname = sess.get_inputs()[0].name
+    oname = sess.get_outputs()[0].name
+    return (sess, config, iname, oname)
+
+
+def run_single_model_for_image(
+    session,
+    config: dict,
+    input_name: str,
+    output_name: str,
+    image_bytes: bytes,
+    model_key: str,
+):
+    """
+    Run one model on one image. Returns (list of detection dicts, orig_w, orig_h).
+    Use orig_w for compute_reference fallback.
+    """
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    tensor, scale, pad_x, pad_y, orig_w, orig_h = letterbox(
+        image, INPUT_SIZE, INPUT_SIZE
+    )
+    out = session.run([output_name], {input_name: tensor})[0]
+    flat = out.flatten().tolist()
+    shape = list(out.shape)
+    thresh = config["confidence"]
+    class_names = config.get("class_names")
+    dtype = config["type"]
+    dets = _parse_yolo_single(
+        flat, shape, class_names, thresh, model_key, dtype,
+        scale, pad_x, pad_y, orig_w, orig_h,
+    )
+    return dets, orig_w, orig_h
 
 
 def iou(box1, box2):
