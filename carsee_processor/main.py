@@ -6,6 +6,10 @@ Uses one-model-at-a-time loading to stay under 512 MB RAM (Render free tier).
 import gc
 import os
 import logging
+
+# CPU-only for ONNX to avoid GPU discovery warning and stay under memory
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ.setdefault("ORT_DISABLE_GPU", "1")
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +25,17 @@ from inference import (
 
 logger = logging.getLogger(__name__)
 models_dir = None
+
+# Allow the damage models used by the Flutter pipeline.
+# Sessions are still loaded one model at a time per request to keep memory low.
+VALID_MODEL_KEYS = [
+    "damage_detector_capstone.onnx",
+    "damage_detector_CDDCE.onnx",
+    "damage_detector_sindhu.onnx",
+    "damage_detector_skillfactory.onnx",
+    "car_component_detector.onnx",
+    "handle_best.onnx",
+]
 
 
 @asynccontextmanager
@@ -54,11 +69,12 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "models_ready": models_dir is not None}
-
-
-# Allowed model keys for single-model endpoint (one at a time to avoid 502/OOM)
-VALID_MODEL_KEYS = [m["key"] for m in MODELS]
+    return {
+        "status": "ok",
+        "models_ready": models_dir is not None,
+        "enabled_model_keys": list(VALID_MODEL_KEYS),
+        "models_in_config": [m["key"] for m in MODELS],
+    }
 
 
 @app.post("/run_single_model")
@@ -163,9 +179,11 @@ async def process(
     # One result per image; we'll fill detectionsByModel and referenceResult
     results = [{"detectionsByModel": {}, "_orig_w": 640.0} for _ in image_bytes_list]
 
-    # Run one model at a time, then drop it to free memory
+    # Run only allowed models one-at-a-time to stay within memory budget.
     for m in MODELS:
         model_key = m["key"]
+        if model_key not in VALID_MODEL_KEYS:
+            continue
         try:
             download_single_model(model_key)
         except Exception as e:
