@@ -8,9 +8,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # App code
+# App code
 COPY model_config.py .
 COPY inference.py .
 COPY main.py .
+COPY bearer_middleware.py .
 
 # Models are downloaded at runtime (lifespan) from GitHub release
 
