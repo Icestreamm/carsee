@@ -13,6 +13,7 @@ os.environ.setdefault("ORT_DISABLE_GPU", "1")
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from bearer_middleware import ProcessingBearerAuthMiddleware
 
 from inference import (
     get_models_dir,
@@ -60,6 +61,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ProcessingBearerAuthMiddleware)
 
 
 @app.get("/")
