@@ -1,4 +1,4 @@
-# Render Static Site — browser password reset for CarSee
+# Render Static Site — browser auth pages for CarSee
 # Dashboard: New → Static Site → connect repo → Root Directory: app/web-auth
 services:
   - type: web
@@ -6,7 +6,3 @@ services:
     runtime: static
     staticPublishPath: .
     buildCommand: echo "Static auth pages — no build"
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /reset-password.html

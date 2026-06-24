@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CarSee — Confirm email</title>
+  <style>
+    :root {
+      --navy: #0d3b6e;
+      --cyan: #00c4de;
+      --card: #ffffff;
+      --text: #0d1b2a;
+      --muted: #546880;
+      --error: #b91c1c;
+      --ok: #166534;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(160deg, #0d3b6e 0%, #1a5276 45%, #1a6090 100%);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border-radius: 20px;
+      padding: 28px 24px 24px;
+      box-shadow: 0 18px 48px rgba(9, 20, 37, 0.28);
+    }
+    .brand { text-align: center; margin-bottom: 20px; }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--navy);
+    }
+    .brand h1 span { color: var(--cyan); }
+    .brand p { margin: 8px 0 0; color: var(--muted); font-size: 0.95rem; }
+    button {
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--navy);
+      color: #fff;
+      margin-top: 14px;
+    }
+    .msg {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+    .msg.error { background: #fee2e2; color: var(--error); }
+    .msg.ok { background: #dcfce7; color: var(--ok); }
+    .msg.info { background: #e0f7f9; color: var(--navy); }
+    .hidden { display: none !important; }
+    .lang { text-align: center; margin-bottom: 12px; }
+    .lang button {
+      width: auto;
+      padding: 6px 14px;
+      font-size: 0.85rem;
+      background: #eef1f7;
+      color: var(--navy);
+      margin: 0 4px;
+      margin-top: 0;
+    }
+    .lang button.active { background: var(--cyan); color: var(--navy); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="lang">
+      <button type="button" id="btn-en" class="active">English</button>
+      <button type="button" id="btn-ar">العربية</button>
+    </div>
+    <div class="brand">
+      <h1>Car<span>See</span></h1>
+      <p id="subtitle">Confirming your email…</p>
+    </div>
+    <div id="loading" class="msg info">Opening CarSee…</div>
+    <div id="done" class="hidden">
+      <div class="msg ok" id="done-text"></div>
+      <button type="button" id="open-app">Open CarSee</button>
+    </div>
+    <div id="error" class="msg error hidden"></div>
+  </div>
+
+  <script>
+    const APP_SCHEME = 'com.carsee.damage_detector';
+    const APP_HOST = 'login-callback';
+    const ANDROID_PACKAGE = 'com.carsee.damage_detector';
+
+    const strings = {
+      en: {
+        subtitle: 'Confirming your email…',
+        loading: 'Opening CarSee…',
+        done: 'Email confirmed! Tap below if the app did not open automatically.',
+        openApp: 'Open CarSee',
+        invalid: 'This confirmation link is invalid or has expired. Sign up again from the CarSee app.',
+        fallback: 'Your email is confirmed. Open the CarSee app and sign in.',
+      },
+      ar: {
+        subtitle: 'جاري تأكيد بريدك الإلكتروني…',
+        loading: 'جاري فتح CarSee…',
+        done: 'تم تأكيد البريد! اضغط أدناه إذا لم يُفتح التطبيق تلقائياً.',
+        openApp: 'فتح CarSee',
+        invalid: 'رابط التأكيد غير صالح أو منتهٍ. أنشئ حساباً جديداً من تطبيق CarSee.',
+        fallback: 'تم تأكيد بريدك. افتح تطبيق CarSee وسجّل الدخول.',
+      },
+    };
+
+    let lang = navigator.language?.startsWith('ar') ? 'ar' : 'en';
+
+    function t(key) {
+      return strings[lang][key] || strings.en[key];
+    }
+
+    function applyLang() {
+      document.documentElement.lang = lang;
+      document.body.dir = lang === 'ar' ? 'rtl' : 'ltr';
+      document.getElementById('subtitle').textContent = t('subtitle');
+      document.getElementById('open-app').textContent = t('openApp');
+      document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+      document.getElementById('btn-ar').classList.toggle('active', lang === 'ar');
+    }
+
+    document.getElementById('btn-en').onclick = () => { lang = 'en'; applyLang(); };
+    document.getElementById('btn-ar').onclick = () => { lang = 'ar'; applyLang(); };
+    applyLang();
+
+    function showError(message) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('done').classList.add('hidden');
+      const el = document.getElementById('error');
+      el.textContent = message;
+      el.classList.remove('hidden');
+    }
+
+    function showDone(message) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('error').classList.add('hidden');
+      document.getElementById('done-text').textContent = message;
+      document.getElementById('done').classList.remove('hidden');
+      cleanUrl();
+    }
+
+    function cleanUrl() {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    function buildAppDeepLink() {
+      const params = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      if (!params.get('type') && !hashParams.get('type')) {
+        params.set('type', 'signup');
+      }
+      const query = params.toString();
+      const hash = window.location.hash || '';
+      return `${APP_SCHEME}://${APP_HOST}${query ? `?${query}` : ''}${hash}`;
+    }
+
+    function buildAndroidIntentUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      if (!params.get('type') && !hashParams.get('type')) {
+        params.set('type', 'signup');
+      }
+      const query = params.toString();
+      return `intent://${APP_HOST}${query ? `?${query}` : ''}#Intent;scheme=${APP_SCHEME};package=${ANDROID_PACKAGE};end`;
+    }
+
+    function openApp() {
+      const appUrl = buildAppDeepLink();
+      const intentUrl = buildAndroidIntentUrl();
+      window.location.href = appUrl;
+      setTimeout(() => {
+        window.location.href = intentUrl;
+      }, 700);
+    }
+
+    document.getElementById('open-app').onclick = openApp;
+
+    (function main() {
+      const params = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const error = params.get('error') || hashParams.get('error');
+      const errorDescription = params.get('error_description') || hashParams.get('error_description');
+
+      if (error) {
+        const msg = errorDescription
+          ? decodeURIComponent(errorDescription.replace(/\+/g, ' '))
+          : t('invalid');
+        showError(msg);
+        return;
+      }
+
+      const hasAuth =
+        params.get('code') ||
+        params.get('token_hash') ||
+        params.get('token') ||
+        hashParams.get('access_token') ||
+        hashParams.get('type');
+
+      if (!hasAuth) {
+        showDone(t('fallback'));
+        return;
+      }
+
+      document.getElementById('loading').textContent = t('loading');
+      openApp();
+      setTimeout(() => showDone(t('done')), 1800);
+    })();
+  </script>
+</body>
+</html>
