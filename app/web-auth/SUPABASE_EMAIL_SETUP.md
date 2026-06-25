@@ -1,4 +1,24 @@
-# Supabase email templates — browser password reset (required)
+# Supabase email templates — browser auth pages (required)
+
+## Signup confirmation (Confirm signup template)
+
+Default Supabase signup emails use `{{ .ConfirmationURL }}`, which can land users on `*.supabase.co` with `{"error":"requested path is invalid"}`.
+
+**Fix:** point the signup email to `confirm-email.html` with `token_hash`.
+
+1. **Authentication** → **Email Templates** → **Confirm signup**
+2. Replace the body with `app/web-auth/supabase-signup-confirm-email.html`
+3. Button link must be:
+
+```
+https://carsee-auth.onrender.com/confirm-email.html?token_hash={{ .TokenHash }}&type=signup
+```
+
+Set **Site URL** to `https://carsee-auth.onrender.com/welcome.html` so any fallback redirect shows a friendly page.
+
+---
+
+## Password reset (Reset password template)
 
 ## Why this is required
 
@@ -33,6 +53,10 @@ Do **not** use `{{ .ConfirmationURL }}` for mobile reset.
 **Authentication** → **URL Configuration** → **Redirect URLs**:
 
 ```
+https://carsee-auth.onrender.com/welcome.html
+https://carsee-auth.onrender.com/welcome.html/
+https://carsee-auth.onrender.com/confirm-email.html
+https://carsee-auth.onrender.com/confirm-email.html/
 https://carsee-auth.onrender.com/reset-password.html
 https://carsee-auth.onrender.com/reset-password.html/
 ```

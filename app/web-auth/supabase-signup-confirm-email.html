@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CarSee — Confirm signup (email template)</title>
+</head>
+<body style="margin:0;padding:0;background:#0d3b6e;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0d3b6e;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;">
+          <tr>
+            <td style="background:linear-gradient(135deg,#0d3b6e,#1a5276);padding:28px;text-align:center;">
+              <div style="font-size:28px;font-weight:800;color:#ffffff;">Car<span style="color:#00c4de;">See</span></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:28px 24px;">
+              <h2 style="margin:0 0 12px;font-size:20px;color:#0d1b2a;">Confirm your email</h2>
+              <p style="margin:0 0 8px;color:#546880;">Account: {{ .Email }}</p>
+              <p style="margin:0 0 20px;color:#546880;">Tap the button to confirm your account, then sign in to CarSee.</p>
+              <a href="https://carsee-auth.onrender.com/confirm-email.html?token_hash={{ .TokenHash }}&type=signup"
+                 style="display:inline-block;background:#0d3b6e;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:10px;font-weight:700;">
+                Confirm &amp; open CarSee →
+              </a>
+              <p style="margin:20px 0 0;font-size:13px;color:#8899aa;line-height:1.5;">
+                Paste this template in Supabase → Authentication → Email Templates → Confirm signup.
+                Do not use <code>{{ .ConfirmationURL }}</code> for mobile — it may open an invalid Supabase page.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
